@@ -1,37 +1,47 @@
-from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-import os
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from flask import Flask, request
+import threading
 
-TOKEN = os.environ.get("BOT_TOKEN")
-APP_URL = os.environ.get("APP_URL")
+# Bu yerga tokenni to'g'ridan-to'g'ri yozamiz
+TOKEN = "7747413362:AAHyv-MxISAf4YckcJuGuyx_hEXA7On8N0M"
 
-app = Flask(__name__)
-telegram_app = Application.builder().token(TOKEN).build()
+# Bu yerga Railway'dagi APP_URL'ingni yoz (oxirida / bo'lmasin)
+APP_URL = "https://web-production-af607.up.railway.app"
 
+# Flask server yaratamiz
+flask_app = Flask(__name__)
+
+# /start komandasi
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("ok🗿")
 
+# Har qanday xabarga javob
 async def reply_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("ok🗿")
 
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, reply_ok))
-
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-    telegram_app.update_queue.put_nowait(update)
-    return "ok", 200
-
-@app.route("/", methods=["GET"])
+# Flask route: webhookni sozlash
+@flask_app.route("/setwebhook")
 def set_webhook():
-    telegram_app.bot.set_webhook(url=f"{APP_URL}/{TOKEN}")
-    return "Webhook set!", 200
+    app.bot.set_webhook(url=f"{APP_URL}/webhook")
+    return "Webhook set!"
 
+# Flask route: Telegram webhook uchun
+@flask_app.route("/webhook", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), app.bot)
+    app.update_queue.put(update)
+    return "ok"
+
+# Telegram botni backgroundda ishga tushirish
+def run_bot():
+    global app
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply_ok))
+    app.run_polling()
+
+# Flask va Telegram birga ishlashi uchun
 if __name__ == "__main__":
-    telegram_app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000)),
-        webhook_url=f"{APP_URL}/{TOKEN}",
-    )
+    threading.Thread(target=run_bot).start()
+    flask_app.run(host="0.0.0.0", port=8000)
